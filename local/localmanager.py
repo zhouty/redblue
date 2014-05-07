@@ -76,21 +76,25 @@ class RedblueBankHelper():
     for host in self.hosts.items():
       server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
       if server.return_flag(self.myid):
+        iprint("client %s got the flag" %self.myid)
         return True
     return False
 
   def return_flag(self, req_id):
     time.sleep(abs(req_id - self.myid))
     if self.flag:
+      iprint("send flag to client %s" %req_id)
       return True
     else:
       return False
     
-  def replicate_latency(self, op, money):
-    for host in self.hosts.items():
-      server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
-      # server.get_op_replicate(self.myid, op, money)
-      threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
+  def replicate_latency(self, hostaddr, op, money):
+    # for host in self.hosts.items():
+    #   server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
+    #   server.get_op_replicate(self.myid, op, money)
+    #   threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
+    server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
+    server.get_op_replicate(self.myid, op, money)
 
   def get_balance(self, money):
     return self.account.get_balance()
@@ -102,13 +106,13 @@ class RedblueBankHelper():
     return self.account.shadow_withdrawAck(money)
 
   def shadow_accrueinterest(self, money):
-    return self.account.shadow_accrueinterest()
+    return self.account.shadow_accrueinterest(money)
 
   def accrueinterest_generator(self, money):
-    return self.accrueinterest.accrueinterest_generator(money)
+    return self.account.accrueinterest_generator(money)
 
   def withdraw_generator(self, money):
-    return self.withdraw_generator(money)
+    return self.account.withdraw_generator(money)
 
   shadow_optrans = {
     1: get_balance,
@@ -143,9 +147,10 @@ class RedblueBankHelper():
       money = self.gene_trans[op](self, money)
 
     if op > 1:
-      self.replicate_latency(op, money)  
+      for hostaddr in self.hosts.keys():
+        threading.Thread(target=self.replicate_latency, args=(hostaddr, op, money)).start()  
 
-    return self.optrans[op](self, money)
+    return self.shadow_optrans[op](self, money)
 
   # This function is called by replicate_latency
   # just used to replicate shadow oprations in all nodes
@@ -210,7 +215,8 @@ def rpc_server_start():
       if flag == '1':
         local_ip = hostaddr
   # configure local RPC server
-  local_manager = BankHelper()
+  # local_manager = BankHelper()
+  local_manager = RedblueBankHelper()
   server = XMLRPCServer((local_ip, local_port), allow_none=True)
   server.register_instance(local_manager)
 
