@@ -57,6 +57,7 @@ class RedblueBankHelper():
     self.account = BankAccount(100, 0.05)
     self.hosts = {}
     self.flag = False
+    self.rclock = 0 # has recieved red operations
     with open("/home/kvmcon/local/hosts") as hostfile:
       for line in hostfile.readlines():
         [user, hostaddr, hostid, flag] = line.split()
@@ -94,7 +95,7 @@ class RedblueBankHelper():
     #   server.get_op_replicate(self.myid, op, money)
     #   threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
     server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
-    server.get_op_replicate(self.myid, op, money)
+    server.get_op_replicate(self.myid, op, money, self.rclock)
 
   def get_balance(self, money):
     return self.account.get_balance()
@@ -142,6 +143,8 @@ class RedblueBankHelper():
       if not self.askfor_flag():
         iprint("Error: flag missing")
         return -1
+      self.rclock = self.rclock + 1
+      iprint("prepare to issue red operation with rclock %s" %self.rclock)
 
     if self.gene_trans[op] != None:
       money = self.gene_trans[op](self, money)
@@ -154,8 +157,13 @@ class RedblueBankHelper():
 
   # This function is called by replicate_latency
   # just used to replicate shadow oprations in all nodes
-  def get_op_replicate(self, req_id, op, money):
+  def get_op_replicate(self, req_id, op, money, rclock):
     time.sleep(abs(req_id - self.myid))
+    if self.optype[op] == 'red':
+      while rclock != self.rclock + 1:
+        sleep(0.1)
+      self.rclock = self.rclock + 1
+
     self.shadow_optrans[op](self, money)
 
 class BankHelper():
