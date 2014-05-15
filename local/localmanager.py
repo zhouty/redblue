@@ -5,7 +5,7 @@ import time
 
 local_port = 2013
 
-def iprint(msg):
+def log(msg):
   print "[Local] : %s" % msg 
   sys.stdout.flush()
 
@@ -13,21 +13,28 @@ class BankAccount():
   def __init__(self, balance, interest):
     self.balance = balance
     self.interest = interest
+    self.lock = threading.RLock()
 
   def get_balance(self):
     return self.balance
 
   # original operations
   def deposit(self, money):
+    self.lock.acquire()
     self.balance = self.balance + money
+    self.lock.release()
 
   def withdraw(self, money):
+    self.lock.acquire()
     if self.balance - money >= 0:
       self.balance = self.balance - money
+    self.lock.release()
 
   def accrueinterest(self):
+    self.lock.acquire()
     delta = self.balance * self.interest
     self.balance = self.balance + delta
+    self.lock.release()
 
   # generators
   def accrueinterest_generator(self, money):
@@ -41,35 +48,98 @@ class BankAccount():
 
   # shadow operations
   def shadow_deposit(self, money):
+    self.lock.acquire()
     self.balance = self.balance + money
+    log("deposit %s" %money)
+    self.lock.release()
+    return 1
 
   def shadow_accrueinterest(self, delta):
+    self.lock.acquire()
     self.balance = self.balance + delta
+    log("accrueinterest %s" %delta)
+    self.lock.release()
+    return 1
 
   def shadow_withdrawAck(self, money):
+    self.lock.acquire()
     self.balance = self.balance - money
+    log("withdraw %s" %money)
+    self.lock.release()
+    return 1
 
   def shadow_withdrawFail():
-    pass
+    return 1
 
+class OprReplicator(threading.Thread):
+  def __init__(self, hostaddr):
+    super(OprReplicator, self).__init__()
+    self.server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
+    # op tuple: sender_id, op_number, money, rlock
+    self.hostaddr = hostaddr
+    self.ops = []
+    self.ops_lock = threading.RLock()
+
+  def run(self):
+    log("replicator to client %s started" %self.hostaddr)
+    while True:
+      self.lock()
+      if len(self.ops) > 0:
+        for op in self.ops:
+          self.replicate_op(op)
+        self.ops.clear()
+      self.unlock()
+
+      time.sleep(5)
+
+  def lock(self):
+    self.ops_lock.acquire()
+
+  def unlock(self):
+    self.ops_lock.release()
+
+  def replicate_op(self, op):
+    result = self.server.get_op_replicate(op[0], op[1], op[2], op[3])  
+  
+  def add_op(self, op):
+    self.lock()
+    self.ops.append(op)
+    self.unlock()
+            
+    
 class RedblueBankHelper():
   def __init__(self):
     self.account = BankAccount(100, 0.05)
     self.hosts = {}
+    self.replicators = {}
     self.flag = False
     self.rclock = 0 # has recieved red operations
+    self.lock = threading.RLock()
+    self.loadconf()
+    self.activate_sender()
+
+  def loadconf(self):
     with open("/home/kvmcon/local/hosts") as hostfile:
       for line in hostfile.readlines():
         [user, hostaddr, hostid, flag] = line.split()
         if int(flag) == 1:
           self.myid = int(hostid)
-          iprint("set my id to %s" %hostid)
+          log("set my id to %s" %hostid)
         else:
           self.hosts[hostaddr] = int(hostid)
-          iprint("found id %s machine with ip %s" %(hostid, hostaddr))
+          log("found id %s machine with ip %s" %(hostid, hostaddr))
     if self.myid == 1:
       self.flag = True
-      iprint("client %s got the flag" %self.myid)
+      log("client %s got the flag" %self.myid)
+
+  def activate_sender(self):
+    for hostaddr in self.hosts.keys():
+      self.replicators[hostaddr] = OprReplicator(hostaddr)
+      self.replicators[hostaddr].start()
+
+  def put_op(self, op):
+    for hostaddr in self.hosts.keys():
+      self.replicators[hostaddr].add_op(op)
 
   def askfor_flag(self):
     if self.flag:
@@ -77,25 +147,18 @@ class RedblueBankHelper():
     for host in self.hosts.items():
       server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
       if server.return_flag(self.myid):
-        iprint("client %s got the flag" %self.myid)
+        log("client %s got the flag" %self.myid)
         return True
     return False
 
   def return_flag(self, req_id):
     time.sleep(abs(req_id - self.myid))
     if self.flag:
-      iprint("send flag to client %s" %req_id)
+      log("send flag to client %s" %req_id)
       return True
     else:
       return False
     
-  def replicate_latency(self, hostaddr, op, money):
-    # for host in self.hosts.items():
-    #   server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
-    #   server.get_op_replicate(self.myid, op, money)
-    #   threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
-    server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
-    server.get_op_replicate(self.myid, op, money, self.rclock)
 
   def get_balance(self, money):
     return self.account.get_balance()
@@ -136,35 +199,74 @@ class RedblueBankHelper():
     4: 'blue'
   }
 
+  def replicate_latency(self, hostaddr, op, money):
+    # for host in self.hosts.items():
+    #   server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
+    #   server.get_op_replicate(self.myid, op, money)
+    #   threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
+    self.lock.acquire()
+    log("hahahahaha")
+    self.lock.release()
+    server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
+    log("server status %s" %server)
+    self.lock.acquire()
+    log("hehehehehe")
+    self.lock.release()
+    # result = server.get_op_replicate(self.myid, op, money, self.rclock)
+
+    try:
+      result = server.get_op_replicate(self.myid, op, money, self.rclock)
+    except Exception, e:
+      self.lock.acquire()
+      log("EXCEPTION %s"%e)
+      self.lock.release()
+    else:
+      self.lock.acquire()
+      log("lalalalala%s" %result)
+      self.lock.release()
+      
+
+      # log("op %s to client %s failed, retry it!" %(op, hostaddr))
   # This function is called from user client
   # You can think it as from the nearest
   def get_op(self, op, money = 0):
     if self.optype[op] == 'red':
       if not self.askfor_flag():
-        iprint("Error: flag missing")
+        log("Error: flag missing")
         return -1
       self.rclock = self.rclock + 1
-      iprint("prepare to issue red operation with rclock %s" %self.rclock)
+      log("prepare to issue red operation with rclock %s" %self.rclock)
 
     if self.gene_trans[op] != None:
       money = self.gene_trans[op](self, money)
+      # red operation failed when generation
+      if money == -1:
+        return -1
 
     if op > 1:
-      for hostaddr in self.hosts.keys():
-        threading.Thread(target=self.replicate_latency, args=(hostaddr, op, money)).start()  
+      self.put_op((self.myid, op, money, self.rclock))
+      # threads = []
+      # for hostaddr in self.hosts.keys():
+      #   threads.append(threading.Thread(target=self.replicate_latency, args=(hostaddr, op, money)))
+      # for t in threads:
+      #   t.start()
+      # for t in threads:
+      #   t.join()
+
 
     return self.shadow_optrans[op](self, money)
 
   # This function is called by replicate_latency
   # just used to replicate shadow oprations in all nodes
   def get_op_replicate(self, req_id, op, money, rclock):
+
     time.sleep(abs(req_id - self.myid))
     if self.optype[op] == 'red':
       while rclock != self.rclock + 1:
         sleep(0.1)
       self.rclock = self.rclock + 1
 
-    self.shadow_optrans[op](self, money)
+    return self.shadow_optrans[op](self, money)
 
 class BankHelper():
   def __init__(self):
@@ -175,10 +277,10 @@ class BankHelper():
         [user, hostaddr, hostid, flag] = line.split()
         if int(flag) == 1:
           self.myid = int(hostid)
-          iprint("set my id to %s" %hostid)
+          log("set my id to %s" %hostid)
         else:
           self.hosts[hostaddr] = int(hostid)
-          iprint("found id %s machine with ip %s" %(hostid, hostaddr))
+          log("found id %s machine with ip %s" %(hostid, hostaddr))
 
   def replicate_latency(self, op, money):
     for host in self.hosts.items():
@@ -228,8 +330,8 @@ def rpc_server_start():
   server = XMLRPCServer((local_ip, local_port), allow_none=True)
   server.register_instance(local_manager)
 
-  iprint("RPC server on Local started")
-  iprint("Listening on port %s" % local_port)
+  log("RPC server on Local started")
+  log("Listening on port %s" % local_port)
 
   # RPC server start to serve
   server.serve_forever()

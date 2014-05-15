@@ -7,16 +7,16 @@ local_dir = "/tmp/kvmcon/local"
 local_conf_dir = "/tmp/kvmcon/localconf"
 local_daemon_remote_path = "local/localdaemon.py"
 
-def iprint(msg):
+def log(msg):
   print "[Global] : %s" % msg 
   sys.stdout.flush()
 
 def local_exec(command):
-  iprint("local_exec '%s'" % command)
+  log("local_exec '%s'" % command)
   info = os.popen(command).read().strip()
   
 def remote_exec(user, host, command):
-  iprint("remote_exec '%s' in %s@%s" % (command, user, host))
+  log("remote_exec '%s' in %s@%s" % (command, user, host))
   info = os.popen("timeout -s KILL 3 ssh %s@%s %s" % (user, host, command)).read().strip()
 
 class GlobalDaemon(Daemon):
@@ -27,12 +27,13 @@ class GlobalDaemon(Daemon):
     with open("/tmp/kvmcon/master") as f:
       line = f.readline()
       [addr, port] = line.split()
+    
     RPCProvider(addr, port).start()
-    iprint("one thread is now waiting for RPC command")
+    log("one thread is now waiting for RPC command")
 
 
   def sync_file(self, user, hostaddr, hostid):
-    iprint("sync file to %s@%s starts" %(user, hostaddr))
+    log("sync file to %s@%s starts" %(user, hostaddr))
     
     local_command = "scp -r %s %s@%s:" % (local_dir, user, hostaddr)
     local_exec(local_command)
@@ -48,7 +49,7 @@ class GlobalDaemon(Daemon):
         self.sync_file(user, hostaddr, hostid)
 
   def destroy(self):
-    iprint("destroy hosts")
+    log("destroy hosts")
 
     # host file parse
     with open("/tmp/kvmcon/slave") as hostfile: 
