@@ -1,32 +1,37 @@
 import SimpleXMLRPCServer, xmlrpclib
 from SocketServer import ThreadingMixIn
-import os,threading,sys
+import os,threading,sys,time
 
 local_dir = "/tmp/kvmcon/local"
 local_conf_dir = "/tmp/kvmcon/localconf"
 local_daemon_remote_path = "local/localdaemon.py"
 
 # This is the node manager
-def iprint(msg):
+def log(msg):
   print "[Global] : %s" % msg 
   sys.stdout.flush()
 
 def local_exec(command):
-  iprint("local_exec '%s'" % command)
+  log("local_exec '%s'" % command)
   info = os.popen(command).read().strip()
   
 def remote_exec(user, host, command):
-  iprint("remote_exec '%s' in %s@%s" % (command, user, host))
+  log("remote_exec '%s' in %s@%s" % (command, user, host))
   info = os.popen("timeout -s KILL 3 ssh %s@%s %s" % (user, host, command)).read().strip()
 
 class GlobalManager():
   def __init__(self):
     self.connected_hosts = []
     self.unconnected_hosts = []
+    self.lock = threading.RLock()
+    self.rclock = 0
+
     with open("/tmp/kvmcon/slave") as hostfile:
       for line in hostfile.readlines():
         [user, hostaddr, hostid] = line.split()
         self.connected_hosts.append(hostaddr)
+    self.num_hosts = len(self.connected_hosts)
+    log("%s clients found" %self.num_hosts)
 
   def getnode(self, hid):
     with open("/tmp/kvmcon/slave") as hostfile:
@@ -61,6 +66,17 @@ class GlobalManager():
       self.unconnected_hosts.remove(hostaddr)
     else:
       return 0
+
+  def get_rclock(self, hostid):
+    if int(time.time()) % self.num_hosts == int(hostid) - 1:
+      self.lock.acquire()
+      self.rclock += 1
+      ret = self.rclock
+      self.lock.release()
+      log("give flag to client %s" %hostid)
+      return ret
+    else:
+      return -1
 
 
 class XMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer.SimpleXMLRPCServer):

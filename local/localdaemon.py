@@ -2,7 +2,7 @@ import os, sys, time, libvirt, threading, datetime
 from daemon import Daemon
 import localmanager
 
-def iprint(msg):
+def log(msg):
   print "[Local] : %s" % msg 
   sys.stdout.flush()
 
@@ -12,7 +12,7 @@ class LocalDaemon(Daemon):
     localmanager.rpc_server_start()
 
   def destroy(self):
-    iprint("destroy in host")
+    log("destroy in host")
 
 
 if __name__ == "__main__":

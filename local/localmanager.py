@@ -126,6 +126,7 @@ class RedblueBankHelper():
         [user, hostaddr, hostid, flag] = line.split()
         if int(flag) == 1:
           self.myid = int(hostid)
+          self.hosts[hostaddr] = int(hostid)
           log("set my id to %s" %hostid)
         else:
           self.hosts[hostaddr] = int(hostid)
@@ -143,6 +144,7 @@ class RedblueBankHelper():
     for hostaddr in self.hosts.keys():
       self.replicators[hostaddr].add_op(op)
 
+  # This is abandoned
   def askfor_flag(self):
     if self.flag:
       return True
@@ -153,6 +155,7 @@ class RedblueBankHelper():
         return True
     return False
 
+  # This is abandoned
   def return_flag(self, req_id):
     time.sleep(abs(req_id - self.myid) / 10)
     if self.flag:
@@ -160,9 +163,14 @@ class RedblueBankHelper():
       return True
     else:
       return False
+
+  # now ask the globalmanager for flag
+  def ask_globalmanager_for_flag(self):
+    server = xmlrpclib.ServerProxy("http://%s:%s" %("192.168.12.47", 2012), allow_none=True)
+    return server.get_rclock(self.myid)
     
 
-  def get_balance(self, money):
+  def get_balance(self, money = 0):
     return self.account.get_balance()
 
   def shadow_deposit(self, money):
@@ -213,11 +221,13 @@ class RedblueBankHelper():
   # You can think it as from the nearest
   def get_op(self, op, money = 0):
     if self.optype[op] == 'red':
-      if not self.askfor_flag():
-        log("Error: flag missing")
-        return -1
-      self.rclock = self.rclock + 1
-      log("prepare to issue red operation with rclock %s" %self.rclock)
+      op_rclock = self.ask_globalmanager_for_flag()
+      while op_rclock == -1:
+        time.sleep(0.5)
+        global op_rclock
+        op_rclock = self.ask_globalmanager_for_flag()
+
+      log("prepare to issue red operation with rclock %s" %op_rclock)
 
     if self.gene_trans[op] != None:
       money = self.gene_trans[op](self, money)
@@ -243,13 +253,13 @@ class RedblueBankHelper():
       # self.pool.wait() 
 
 
-    return self.shadow_optrans[op](self, money)
+    return 1
 
   # This function is called by replicate_latency
   # just used to replicate shadow oprations in all nodes
   def get_op_replicate(self, req_id, op, money, rclock):
 
-    time.sleep(abs(req_id - self.myid) / 10)
+    time.sleep(abs(req_id - self.myid))
     if self.optype[op] == 'red':
       while rclock != self.rclock + 1:
         time.sleep(0.1)
@@ -301,7 +311,7 @@ class BankHelper():
     return self.optrans[op](self, money)
     
   def get_op_replicate(self, req_id, op, money = 0):
-    time.sleep(abs(req_id - self.myid) / 10)
+    time.sleep(abs(req_id - self.myid))
     self.optrans[op](self, money)
 
 class XMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer.SimpleXMLRPCServer):

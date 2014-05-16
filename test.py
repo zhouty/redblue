@@ -25,13 +25,13 @@ import random
 
 def printall():
 	server = xmlrpclib.ServerProxy("http://192.168.12.47:2013", allow_none=True)
-	print server.get_op(1)
+	print server.get_balance()
 	server = xmlrpclib.ServerProxy("http://192.168.13.131:2013", allow_none=True)
-	print server.get_op(1)
+	print server.get_balance()
 	server = xmlrpclib.ServerProxy("http://192.168.13.150:2013", allow_none=True)
-	print server.get_op(1)
-	server = xmlrpclib.ServerProxy("http://192.168.12.6:2013", allow_none=True)
-	print server.get_op(1)
+	print server.get_balance()
+	# server = xmlrpclib.ServerProxy("http://192.168.12.6:2013", allow_none=True)
+	# print server.get_balance()
 
 def throughput(ip):
 	start = time.time()
@@ -109,7 +109,7 @@ def small_throughput(ip):
 			server.get_op(4)
 		count += 20
 
-	print count
+	return count
 
 if sys.argv[1] == '1':
 	print throughput("192.168.12.47")
@@ -122,8 +122,8 @@ elif sys.argv[1] == '3':
 	client3 = '192.168.13.150'
 	client4 = '192.168.12.6'
 	threading.Thread(target=throughput, args=(client1, )).start()
-	threading.Thread(target=throughput, args=(client2, )).start()
-	threading.Thread(target=throughput, args=(client3, )).start()
-	threading.Thread(target=throughput, args=(client4, )).start()
+	# threading.Thread(target=throughput, args=(client2, )).start()
+	# threading.Thread(target=throughput, args=(client3, )).start()
+	# threading.Thread(target=throughput, args=(client4, )).start()
 else:
 	printall()
