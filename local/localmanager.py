@@ -2,6 +2,7 @@ import os, sys, time, threading
 import SimpleXMLRPCServer, xmlrpclib
 from SocketServer import ThreadingMixIn
 import time
+import threadpool
 
 local_port = 2013
 
@@ -114,9 +115,10 @@ class RedblueBankHelper():
     self.replicators = {}
     self.flag = False
     self.rclock = 0 # has recieved red operations
+    self.pool = threadpool.ThreadPool(50)
     self.lock = threading.RLock()
     self.loadconf()
-    self.activate_sender()
+    # self.activate_sender()
 
   def loadconf(self):
     with open("/home/kvmcon/local/hosts") as hostfile:
@@ -152,7 +154,7 @@ class RedblueBankHelper():
     return False
 
   def return_flag(self, req_id):
-    time.sleep(abs(req_id - self.myid))
+    time.sleep(abs(req_id - self.myid) / 10)
     if self.flag:
       log("send flag to client %s" %req_id)
       return True
@@ -204,29 +206,9 @@ class RedblueBankHelper():
     #   server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
     #   server.get_op_replicate(self.myid, op, money)
     #   threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
-    self.lock.acquire()
-    log("hahahahaha")
-    self.lock.release()
     server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
-    log("server status %s" %server)
-    self.lock.acquire()
-    log("hehehehehe")
-    self.lock.release()
-    # result = server.get_op_replicate(self.myid, op, money, self.rclock)
+    result = server.get_op_replicate(self.myid, op, money, self.rclock)
 
-    try:
-      result = server.get_op_replicate(self.myid, op, money, self.rclock)
-    except Exception, e:
-      self.lock.acquire()
-      log("EXCEPTION %s"%e)
-      self.lock.release()
-    else:
-      self.lock.acquire()
-      log("lalalalala%s" %result)
-      self.lock.release()
-      
-
-      # log("op %s to client %s failed, retry it!" %(op, hostaddr))
   # This function is called from user client
   # You can think it as from the nearest
   def get_op(self, op, money = 0):
@@ -244,14 +226,21 @@ class RedblueBankHelper():
         return -1
 
     if op > 1:
-      self.put_op((self.myid, op, money, self.rclock))
+      # self.put_op((self.myid, op, money, self.rclock))
       # threads = []
       # for hostaddr in self.hosts.keys():
-      #   threads.append(threading.Thread(target=self.replicate_latency, args=(hostaddr, op, money)))
+        # threads.append(threading.Thread(target=self.replicate_latency, args=(hostaddr, op, money)))
       # for t in threads:
       #   t.start()
       # for t in threads:
       #   t.join()
+      data = []
+      for hostaddr in self.hosts.keys(): 
+        data.extend([((hostaddr, op, money), {})])
+      requests = threadpool.makeRequests(self.replicate_latency, data)
+      for req in requests:
+        self.pool.putRequest(req)
+      # self.pool.wait() 
 
 
     return self.shadow_optrans[op](self, money)
@@ -260,10 +249,10 @@ class RedblueBankHelper():
   # just used to replicate shadow oprations in all nodes
   def get_op_replicate(self, req_id, op, money, rclock):
 
-    time.sleep(abs(req_id - self.myid))
+    time.sleep(abs(req_id - self.myid) / 10)
     if self.optype[op] == 'red':
       while rclock != self.rclock + 1:
-        sleep(0.1)
+        time.sleep(0.1)
       self.rclock = self.rclock + 1
 
     return self.shadow_optrans[op](self, money)
@@ -312,7 +301,7 @@ class BankHelper():
     return self.optrans[op](self, money)
     
   def get_op_replicate(self, req_id, op, money = 0):
-    time.sleep(abs(req_id - self.myid))
+    time.sleep(abs(req_id - self.myid) / 10)
     self.optrans[op](self, money)
 
 class XMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer.SimpleXMLRPCServer):
