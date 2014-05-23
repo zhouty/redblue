@@ -131,9 +131,9 @@ class RedblueBankHelper():
         else:
           self.hosts[hostaddr] = int(hostid)
           log("found id %s machine with ip %s" %(hostid, hostaddr))
-    if self.myid == 1:
-      self.flag = True
-      log("client %s got the flag" %self.myid)
+    # if self.myid == 1:
+    #   self.flag = True
+    #   log("client %s got the flag" %self.myid)
 
   def activate_sender(self):
     for hostaddr in self.hosts.keys():
@@ -209,22 +209,22 @@ class RedblueBankHelper():
     4: 'blue'
   }
 
-  def replicate_latency(self, hostaddr, op, money):
+  def replicate_latency(self, hostaddr, op, money, rclock):
     # for host in self.hosts.items():
     #   server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
     #   server.get_op_replicate(self.myid, op, money)
     #   threading.Thread(target=server.get_op_replicate, args=(self.myid, op, money)).start()
     server = xmlrpclib.ServerProxy("http://%s:%s" %(hostaddr, local_port), allow_none=True)
-    result = server.get_op_replicate(self.myid, op, money, self.rclock)
+    result = server.get_op_replicate(self.myid, op, money, rclock)
 
   # This function is called from user client
   # You can think it as from the nearest
   def get_op(self, op, money = 0):
+    op_rclock = 0
     if self.optype[op] == 'red':
       op_rclock = self.ask_globalmanager_for_flag()
       while op_rclock == -1:
         time.sleep(0.5)
-        global op_rclock
         op_rclock = self.ask_globalmanager_for_flag()
 
       log("prepare to issue red operation with rclock %s" %op_rclock)
@@ -246,7 +246,7 @@ class RedblueBankHelper():
       #   t.join()
       data = []
       for hostaddr in self.hosts.keys(): 
-        data.extend([((hostaddr, op, money), {})])
+        data.extend([((hostaddr, op, money, op_rclock), {})])
       requests = threadpool.makeRequests(self.replicate_latency, data)
       for req in requests:
         self.pool.putRequest(req)
@@ -258,8 +258,9 @@ class RedblueBankHelper():
   # This function is called by replicate_latency
   # just used to replicate shadow oprations in all nodes
   def get_op_replicate(self, req_id, op, money, rclock):
+    if req_id != self.myid:
+      time.sleep(abs(req_id - self.myid))
 
-    time.sleep(abs(req_id - self.myid))
     if self.optype[op] == 'red':
       while rclock != self.rclock + 1:
         time.sleep(0.1)
