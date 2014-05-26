@@ -259,7 +259,7 @@ class RedblueBankHelper():
   # just used to replicate shadow oprations in all nodes
   def get_op_replicate(self, req_id, op, money, rclock):
     if req_id != self.myid:
-      time.sleep(abs(req_id - self.myid))
+      time.sleep(abs(req_id - self.myid) / 10)
 
     if self.optype[op] == 'red':
       while rclock != self.rclock + 1:
@@ -287,7 +287,7 @@ class BankHelper():
       server = xmlrpclib.ServerProxy("http://%s:%s" %(host[0], local_port), allow_none=True)
       server.get_op_replicate(self.myid, op, money)
 
-  def get_balance(self, money):
+  def get_balance(self):
     return self.account.get_balance()
 
   def deposit(self, money):

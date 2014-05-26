@@ -26,12 +26,20 @@ import random
 def printall():
 	server = xmlrpclib.ServerProxy("http://192.168.12.47:2013", allow_none=True)
 	print server.get_balance()
-	# server = xmlrpclib.ServerProxy("http://192.168.12.6:2013", allow_none=True)
-	# print server.get_balance()
+	server = xmlrpclib.ServerProxy("http://192.168.12.6:2013", allow_none=True)
+	print server.get_balance()
 	# server = xmlrpclib.ServerProxy("http://192.168.13.150:2013", allow_none=True)
 	# print server.get_balance()
 	# server = xmlrpclib.ServerProxy("http://192.168.13.131:2013", allow_none=True)
 	# print server.get_balance()
+
+def disable(hostid):
+	server = xmlrpclib.ServerProxy("http://192.168.12.47:2012", allow_none=True)
+	return server.disable(hostid)
+
+def enable(hostid):
+	server = xmlrpclib.ServerProxy("http://192.168.12.47:2012", allow_none=True)
+	return server.enable(hostid)
 
 def throughput(ip):
 	start = time.time()
@@ -127,8 +135,14 @@ elif sys.argv[1] == '3':
 	client4 = '192.168.13.150'
 	
 	threading.Thread(target=throughput, args=(client1, )).start()
-	# threading.Thread(target=throughput, args=(client2, )).start()
+	threading.Thread(target=throughput, args=(client2, )).start()
 	# threading.Thread(target=throughput, args=(client3, )).start()
 	# threading.Thread(target=throughput, args=(client4, )).start()
-else:
+elif sys.argv[1] == '4':
+	print disable(2)
+
+elif sys.argv[1] == '5':
+	print enable(2)
+
+else: 
 	printall()

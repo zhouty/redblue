@@ -29,21 +29,23 @@ class GlobalManager():
     with open("/tmp/kvmcon/slave") as hostfile:
       for line in hostfile.readlines():
         [user, hostaddr, hostid] = line.split()
-        self.connected_hosts.append(hostaddr)
+        self.connected_hosts.append(int(hostid))
     self.num_hosts = len(self.connected_hosts)
     log("%s clients found" %self.num_hosts)
+    log(self.connected_hosts)
 
   def getnode(self, hid):
     with open("/tmp/kvmcon/slave") as hostfile:
       for line in hostfile.readlines():
         [user, hostaddr, hostid] = line.split()
-        if hostid == hid:
-          return [user, hostaddr, hostid]
+        if int(hostid) == hid:
+          return [user, hostaddr]
 
   def enable(self, hostid):
-    [user, hostaddr, hostid] = self.getnode(hostid)
-    if hostaddr in self.connected_hosts:
+    if hostid in self.connected_hosts:
       return 1
+
+    [user, hostaddr] = self.getnode(hostid)
 
     local_command = "scp -r %s %s@%s:" % (local_dir, user, hostaddr)
     local_exec(local_command)
@@ -52,23 +54,26 @@ class GlobalManager():
     remote_command = "python %s restart" % local_daemon_remote_path
     remote_exec(user, hostaddr, remote_command)
 
-    self.connected_hosts.append(hostaddr)
+    self.connected_hosts.append(hostid)
+    return 1
 
 
   def disable(self, hostid):
-    [user, hostaddr, hostid] = self.getnode(hostid)
     # delete it in connected or unconnected host list.
-    if hostaddr in self.connected_hosts:
-      self.connected_hosts.remove(hostaddr)
+    if hostid in self.connected_hosts:
+      [user, hostaddr] = self.getnode(hostid)
       remote_command = "python %s stop" % local_daemon_remote_path
       os.popen("ssh %s@%s %s" %(user, hostaddr, remote_command)).read()
-    elif hostaddr in self.unconnected_hosts:
-      self.unconnected_hosts.remove(hostaddr)
+      self.connected_hosts.remove(hostid)
+      return 1
+    elif hostid in self.unconnected_hosts:
+      self.unconnected_hosts.remove(hostid)
+      return 1
     else:
       return 0
 
   def get_rclock(self, hostid):
-    if int(time.time()) % self.num_hosts == int(hostid) - 1:
+    if int(time.time()) % self.num_hosts == self.connected_hosts.index(hostid):
       self.lock.acquire()
       self.rclock += 1
       ret = self.rclock
