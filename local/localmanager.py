@@ -220,6 +220,12 @@ class RedblueBankHelper():
   # This function is called from user client
   # You can think it as from the nearest
   def get_op(self, op, money = 0):
+    if self.gene_trans[op] != None:
+      money = self.gene_trans[op](self, money)
+      # red operation failed when generation
+      if money == -1:
+        return -1
+
     op_rclock = 0
     if self.optype[op] == 'red':
       op_rclock = self.ask_globalmanager_for_flag()
@@ -228,12 +234,6 @@ class RedblueBankHelper():
         op_rclock = self.ask_globalmanager_for_flag()
 
       log("prepare to issue red operation with rclock %s" %op_rclock)
-
-    if self.gene_trans[op] != None:
-      money = self.gene_trans[op](self, money)
-      # red operation failed when generation
-      if money == -1:
-        return -1
 
     if op > 1:
       # self.put_op((self.myid, op, money, self.rclock))

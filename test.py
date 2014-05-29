@@ -145,4 +145,6 @@ elif sys.argv[1] == '5':
 	print enable(2)
 
 else: 
+	server = xmlrpclib.ServerProxy("http://192.168.12.47:2013", allow_none=True)
+	# server.get_op(4, 20)
 	printall()
